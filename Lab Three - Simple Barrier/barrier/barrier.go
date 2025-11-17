@@ -17,9 +17,8 @@
 //--------------------------------------------
 // Author: Joseph Kehoe (Joseph.Kehoe@setu.ie)
 // Created on 30/9/2024
-// Modified by:
-// Issues:
-// The barrier is not implemented!
+// Modified by: Ihor Melashchenko
+// Issues: Fixed - barrier now properly implemented
 //--------------------------------------------
 
 package main
@@ -33,31 +32,72 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
-// Place a barrier in this function --use Mutex's and Semaphores
-func doStuff(goNum int, wg *sync.WaitGroup) bool {
+// ==================== GLOBAL VARIABLES ====================
+// Barrier synchronization primitives (shared across goroutines)
+var (
+	barrierMutex sync.Mutex          // Protects shared counter
+	count        int                 // Tracks goroutines at barrier
+	barrierSem   *semaphore.Weighted // Blocks goroutines until all arrive
+	ctx          context.Context     // Context for semaphore operations
+)
+
+// ==========================================================
+
+// doStuff demonstrates barrier synchronization using mutex and semaphore
+// All goroutines must complete Part A before any can proceed to Part B
+// Parameters:
+//   - goNum: Unique identifier for this goroutine
+//   - wg: WaitGroup to signal completion
+//   - totalRoutines: Total number of goroutines to synchronize
+//
+// Returns:
+//   - bool: Always true (success indicator)
+func doStuff(goNum int, wg *sync.WaitGroup, totalRoutines int) bool {
+	// Simulate work before barrier
 	time.Sleep(time.Second)
 	fmt.Println("Part A", goNum)
-	//we wait here until everyone has completed part A
+
+	// ==================== BARRIER IMPLEMENTATION ====================
+	// Step 1: Safely increment arrival counter
+	barrierMutex.Lock()
+	count++
+	lastToArrive := (count == totalRoutines)
+	barrierMutex.Unlock()
+
+	// Step 2: Last goroutine signals the semaphore
+	if lastToArrive {
+		barrierSem.Release(1) // Open the turnstile
+	}
+
+	// Step 3: Wait at the turnstile (all goroutines pass through here)
+	barrierSem.Acquire(ctx, 1) // Wait for/take the token
+	barrierSem.Release(1)      // Pass token to next goroutine (turnstile pattern)
+	// ================================================================
+
+	// All goroutines have passed the barrier
 	fmt.Println("PartB", goNum)
-	wg.Done()
+	wg.Done() // Signal completion
 	return true
 }
 
+// main sets up and executes the barrier demonstration
 func main() {
 	totalRoutines := 10
 	var wg sync.WaitGroup
 	wg.Add(totalRoutines)
-	//we will need some of these
-	ctx := context.TODO()
-	var theLock sync.Mutex
-	sem := semaphore.NewWeighted(int64(totalRoutines))
-	theLock.Lock()
-	sem.Acquire(ctx, 1)
-	for i := range totalRoutines { //create the go Routines here
-		go doStuff(i, &wg)
-	}
-	sem.Release(1)
-	theLock.Unlock()
 
-	wg.Wait() //wait for everyone to finish before exiting
+	// ==================== BARRIER INITIALIZATION ====================
+	ctx = context.TODO()                  // Create context for semaphore
+	count = 0                             // Initialize arrival counter
+	barrierSem = semaphore.NewWeighted(1) // Create semaphore with capacity 1
+	barrierSem.Acquire(ctx, 1)            // Initialize to 0 (blocked/closed)
+	// ================================================================
+
+	// Launch all goroutines
+	for i := range totalRoutines {
+		go doStuff(i, &wg, totalRoutines)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
 }

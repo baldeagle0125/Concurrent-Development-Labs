@@ -1,3 +1,15 @@
+/**
+ * Lab Six - Producer-Consumer Problem
+ * Description: Demonstrates producer-consumer pattern using thread-safe
+ *              circular buffer with semaphore synchronization
+ * 
+ * Configuration:
+ * - 100 threads (50 producers + 50 consumers)
+ * - Buffer capacity: 20 events
+ * - Each producer creates 10 events
+ * - Each consumer processes 10 events
+ */
+
 #include "SafeBuffer.h"
 #include "Event.h"
 #include "Semaphore.h"
@@ -7,23 +19,30 @@
 #include <memory>
 #include <mutex>
 
+// ==================== CONFIGURATION ====================
+static const int num_threads = 100;  // Total threads (producers + consumers)
+const int size = 20;                 // Buffer capacity
+const int numLoops = 10;             // Items per producer/consumer
 
-static const int num_threads = 100;
-const int size = 20;
-const int numLoops = 10;
-
-// Mutex for console output to prevent garbled messages
+// Mutex for console output to prevent interleaved messages
 std::mutex cout_mutex;
+// =======================================================
 
-
-/*! \fn producer
-    \brief Creates events and adds them to buffer
-*/
+/**
+ * producer - Creates events and adds them to the shared buffer
+ * @param theBuffer: Shared thread-safe buffer
+ * @param numLoops: Number of events to produce
+ * @param id: Unique producer identifier
+ */
 void producer(std::shared_ptr<SafeBuffer<std::shared_ptr<Event>>> theBuffer, int numLoops, int id) {
   for(int i = 0; i < numLoops; ++i) {
-    // Produce event and add to buffer
+    // Create new event with unique ID (id * 1000 + i)
     std::shared_ptr<Event> e = std::make_shared<Event>(id * 1000 + i);
+    
+    // Add to buffer (blocks if buffer is full)
     theBuffer->put(e);
+    
+    // Thread-safe console output
     {
       std::lock_guard<std::mutex> lock(cout_mutex);
       std::cout << "Producer " << id << " produced event " << e->getId() << std::endl;
@@ -31,13 +50,18 @@ void producer(std::shared_ptr<SafeBuffer<std::shared_ptr<Event>>> theBuffer, int
   }
 }
 
-/*! \fn consumer
-    \brief Takes events from buffer and consumes them
-*/
+/**
+ * consumer - Takes events from buffer and processes them
+ * @param theBuffer: Shared thread-safe buffer
+ * @param numLoops: Number of events to consume
+ * @param id: Unique consumer identifier
+ */
 void consumer(std::shared_ptr<SafeBuffer<std::shared_ptr<Event>>> theBuffer, int numLoops, int id) {
   for(int i = 0; i < numLoops; ++i) {
-    // Get event from buffer and consume it
+    // Get event from buffer (blocks if buffer is empty)
     std::shared_ptr<Event> e = theBuffer->get();
+    
+    // Thread-safe console output
     {
       std::lock_guard<std::mutex> lock(cout_mutex);
       std::cout << "Consumer " << id << " consuming event " << e->getId() << std::endl;
@@ -45,8 +69,11 @@ void consumer(std::shared_ptr<SafeBuffer<std::shared_ptr<Event>>> theBuffer, int
   }
 }
 
+/**
+ * main - Sets up and runs the producer-consumer simulation
+ */
 int main(void) {
-  // Create shared buffer
+  // Create shared buffer with capacity for 'size' events
   std::shared_ptr<SafeBuffer<std::shared_ptr<Event>>> aBuffer = 
     std::make_shared<SafeBuffer<std::shared_ptr<Event>>>(size);
   
@@ -63,12 +90,12 @@ int main(void) {
     consumers.push_back(std::thread(consumer, aBuffer, numLoops, i));
   }
   
-  // Join all producer threads
+  // Wait for all producer threads to complete
   for(auto& t : producers) {
     t.join();
   }
   
-  // Join all consumer threads
+  // Wait for all consumer threads to complete
   for(auto& t : consumers) {
     t.join();
   }

@@ -1,3 +1,7 @@
+// Go Concurrency Essentials - Mutex Example
+// Description: Demonstrates traditional mutex-based synchronization
+//              for protecting shared state
+
 package main
 
 import (
@@ -5,37 +9,46 @@ import (
 	"sync"
 )
 
-// Global variables shared between functions --A BAD IDEA
+// Global variables (passed by reference in practice)
 var wg sync.WaitGroup
-var total int64
+var total int64 // Shared counter (not thread-safe without mutex)
 
+// adds increments a counter in a loop with mutex protection
+// Parameters:
+//   - n: Number of times to increment
+//   - theLock: Mutex to protect shared counter
+//
+// Returns:
+//   - bool: Always true (success indicator)
 func adds(n int, theLock *sync.Mutex) bool {
 	for range n {
-		theLock.Lock()
-		total++
-		theLock.Unlock()
+		// ==================== CRITICAL SECTION ====================
+		theLock.Lock()   // Acquire exclusive access
+		total++          // Increment shared variable
+		theLock.Unlock() // Release lock
+		// ==========================================================
 	}
-	wg.Done() //let waitgroup know we have finished
+	wg.Done() // Signal completion to WaitGroup
 	return true
 }
 
+// main demonstrates mutex synchronization with multiple goroutines
+// Result: 10 goroutines × 1000 increments each = 10,000 (always correct)
 func main() {
-
-	//theLock will be passed by reference between go routines
-	//better than using a global variable
+	// Mutex passed by reference (better than global, though still used here for demo)
 	var theLock sync.Mutex
 
 	total = 0
-	//the waitgroup is used as a barrier
-	// init it to number of go routines
-	wg.Add(10)
+	wg.Add(10) // Initialize WaitGroup for 10 goroutines
 
-	//for loop using range option
+	// Launch 10 goroutines, each incrementing 1000 times
 	for i := range 10 {
-		//starting
 		fmt.Println(i)
 		go adds(1000, &theLock)
 	}
-	wg.Wait() //wait here until everyone (10 go routines) is done
+
+	wg.Wait() // Wait for all goroutines to complete
+
+	// Print final value (should always be 10,000)
 	fmt.Println(total)
 }

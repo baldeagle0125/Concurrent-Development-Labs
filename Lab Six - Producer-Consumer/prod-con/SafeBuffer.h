@@ -51,52 +51,96 @@
 #include <memory>
 #include <mutex>
 
-/*! \class SafeBuffer
-    \brief A thread-safe circular buffer using semaphores
-*/
+/**
+ * SafeBuffer - A thread-safe circular buffer using semaphore synchronization
+ * Template class that works with any data type
+ * 
+ * Thread Safety Strategy:
+ * - mutex: Binary semaphore for mutual exclusion
+ * - spaces: Counting semaphore tracking available buffer spaces
+ * - items: Counting semaphore tracking items in buffer
+ * 
+ * Prevents:
+ * - Race conditions (via mutex)
+ * - Buffer overflow (via spaces semaphore)
+ * - Buffer underflow (via items semaphore)
+ */
 template <typename T>
 class SafeBuffer {
 private:
-    T* buffer;
-    int size;
-    int first;
-    int last;
-    std::shared_ptr<Semaphore> mutex;
-    std::shared_ptr<Semaphore> spaces;  // Counts available spaces
-    std::shared_ptr<Semaphore> items;   // Counts items in buffer
+    T* buffer;                              // Circular array storage
+    int size;                               // Buffer capacity
+    int first;                              // Index of first item (for get)
+    int last;                               // Index where next item goes (for put)
+    std::shared_ptr<Semaphore> mutex;       // Protects buffer operations
+    std::shared_ptr<Semaphore> spaces;      // Counts available spaces
+    std::shared_ptr<Semaphore> items;       // Counts items in buffer
     
 public:
+    /**
+     * Constructor - Initializes buffer and semaphores
+     * @param s: Buffer capacity (size)
+     */
     SafeBuffer(int s) : size(s), first(0), last(0) {
         buffer = new T[size];
-        mutex = std::make_shared<Semaphore>(1);
-        spaces = std::make_shared<Semaphore>(size);  // Initially all spaces available
-        items = std::make_shared<Semaphore>(0);      // Initially no items
+        mutex = std::make_shared<Semaphore>(1);     // Binary semaphore
+        spaces = std::make_shared<Semaphore>(size); // All spaces initially free
+        items = std::make_shared<Semaphore>(0);     // No items initially
     }
     
+    /**
+     * Destructor - Frees allocated buffer memory
+     */
     ~SafeBuffer() {
         delete[] buffer;
     }
     
+    /**
+     * put - Adds an item to the buffer
+     * Blocks if buffer is full
+     * @param item: Item to add to buffer
+     * 
+     * Synchronization:
+     * 1. Wait for available space (blocks if full)
+     * 2. Lock buffer for exclusive access
+     * 3. Add item and update index
+     * 4. Unlock buffer
+     * 5. Signal that new item is available
+     */
     void put(T item) {
-        spaces->Wait();  // Wait for available space
-        mutex->Wait();   // Lock buffer
+        spaces->Wait();  // Wait for available space (blocks if full)
+        mutex->Wait();   // Lock buffer for exclusive access
         
+        // Add item to circular buffer
         buffer[last] = item;
-        last = (last + 1) % size;
+        last = (last + 1) % size;  // Wrap around using modulo
         
         mutex->Signal(); // Unlock buffer
-        items->Signal(); // Signal that item is available
+        items->Signal(); // Signal that item is available for consumers
     }
     
+    /**
+     * get - Removes and returns an item from the buffer
+     * Blocks if buffer is empty
+     * @return: Item removed from buffer
+     * 
+     * Synchronization:
+     * 1. Wait for item to be available (blocks if empty)
+     * 2. Lock buffer for exclusive access
+     * 3. Remove item and update index
+     * 4. Unlock buffer
+     * 5. Signal that space is now available
+     */
     T get() {
-        items->Wait();   // Wait for item to be available
-        mutex->Wait();   // Lock buffer
+        items->Wait();   // Wait for item to be available (blocks if empty)
+        mutex->Wait();   // Lock buffer for exclusive access
         
+        // Remove item from circular buffer
         T item = buffer[first];
-        first = (first + 1) % size;
+        first = (first + 1) % size;  // Wrap around using modulo
         
         mutex->Signal(); // Unlock buffer
-        spaces->Signal();// Signal that space is available
+        spaces->Signal();// Signal that space is available for producers
         
         return item;
     }
