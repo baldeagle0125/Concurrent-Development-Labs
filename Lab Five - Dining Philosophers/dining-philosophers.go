@@ -1,13 +1,6 @@
 // Lab Five - Dining Philosophers Problem
-// Date: November 14, 2025
 // Description: Classic dining philosophers problem with deadlock prevention
 //              using resource hierarchy solution
-// License: GPL v3
-//
-// DEADLOCK PREVENTION STRATEGY:
-// Philosophers 0-3 pick up left fork first, then right fork
-// Philosopher 4 picks up right fork first, then left fork
-// This breaks the circular wait condition, preventing deadlock
 
 package main
 
